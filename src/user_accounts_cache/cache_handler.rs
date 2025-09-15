@@ -1,9 +1,10 @@
 use std::collections::hash_map::Entry;
 
-use crate::{transaction_event_handler::transaction_event_handler::TxEvent, user_accounts_cache::{types::AccountStore, user_accounts::UserAccountDetails}};
+use crate::{transaction_handler::types::{TransactionTracker, TxEvent}, user_accounts_cache::{types::AccountStore, user_accounts::UserAccountDetails}};
 
 pub struct CacheHandler {
     user_accounts_map: AccountStore,
+    transaction_store: TransactionTracker
 }
 
 impl CacheHandler {
@@ -11,12 +12,11 @@ impl CacheHandler {
     pub(crate) fn new() -> Self {
         Self {
             user_accounts_map: AccountStore::new(),
+            transaction_store: TransactionTracker::new(),
         }
     }
 
-    /// TODO: Change internal handling of errors
-    /// TODO: create custom anyhow errors
-    /// TODO: Create error dumping functionality
+
     pub(crate) fn handle_account_update(
     &mut self,
     tx_event: &TxEvent,
@@ -90,7 +90,7 @@ impl std::fmt::Display for CacheHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::{transaction_event_handler::transaction_event_handler::TxEvent, CacheHandler};
+    use crate::{transaction_handler::types::TxEvent, CacheHandler};
 
 
     // All test Scenarios for these unit tests can be found here:

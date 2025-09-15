@@ -24,3 +24,8 @@ This included handling
 ## Part 4: Submission and notes on further improvements
 
 Demo of TCP stream example owr websocket into stream
+
+## Testing approach
+
+Unit Tests
+Where I draw the line and start to write system/ integration tests

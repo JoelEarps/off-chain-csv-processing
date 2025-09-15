@@ -31,7 +31,7 @@ of funds should not change
 
 1. Use typestate to create a state machine to only allow transitions of the states for Dispute -> Resolve -> Chargeback.
 2. The TCP server improvements - stream -> channel.
-3. Undefined scenarios - what about if no amount value present in the tx.
+3. Undefined scenarios - what about if no amount value present in the tx, withdrawn transaction cannot create account but we then receive a dispute.
 4. Use thiserror to create definite errors for the application, leading to a better and more specific error report
 5. Getters and setters to provide better encapsulation.
 6. Use of BigDecimal to stop floating point errors and therefore keep precision to 4 decimal places.

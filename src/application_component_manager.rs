@@ -1,4 +1,4 @@
-use crate::{transaction_event_handler::{stream_generator::GenerateStream, transaction_event_handler::TxEvent}, user_accounts_cache::errors::ErrorReportAnyhow, CacheHandler};
+use crate::{{stream_handler::stream_generator::GenerateStream, transaction_handler::types::TxEvent}, user_accounts_cache::errors::ErrorReportAnyhow, CacheHandler};
 use futures::StreamExt;
 
 pub struct ApplicationComponentManager<A: GenerateStream> {
