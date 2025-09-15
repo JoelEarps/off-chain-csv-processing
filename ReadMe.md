@@ -21,3 +21,16 @@ Docs folder
 `cargo test`
 
 ### Code coverage
+
+```bash
+
+|| Uncovered Lines:
+|| src/main.rs: 144, 155, 161, 166, 168-172, 174-176, 178-180, 182-184, 186-187, 191-192, 197
+|| Tested/Total Lines:
+|| src/main.rs: 29/52
+
+```
+
+## Branch documentation
+
+Please see `docs/how-i-handle-problems.md` to view how I handled each problem and what each branch means.

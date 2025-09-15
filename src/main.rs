@@ -1,6 +1,6 @@
 use std::{collections::{hash_map::Entry, HashMap}, env, error::Error};
 
-use csv_async::{AsyncReader, AsyncReaderBuilder};
+use csv_async::{AsyncReaderBuilder};
 use serde::Deserialize;
 use tokio::fs::File;
 use tokio_stream::StreamExt;
@@ -45,9 +45,9 @@ impl UserAccountDetails {
 
     /// Unlike deposit, this function returns a result, this is because it is not possible more from an account than possible
     /// If a client does not have sufficient available funds the withdrawal should fail and the total amount of funds should not change
-    pub fn withdraw_from_account(&mut self, withdraw_amount: &f64) -> anyhow::Result<(())> {
+    pub fn withdraw_from_account(&mut self, withdraw_amount: &f64) -> anyhow::Result<()> {
         if self.available < *withdraw_amount {
-            Err(anyhow::anyhow!("Insufficent funds to perform withdrawal"))
+            Err(anyhow::anyhow!("Insufficient funds to perform withdrawal"))
         } else {
             self.available -= withdraw_amount;
             self.total = self.available + self.held;
@@ -159,11 +159,8 @@ fn handle_account_update(tx_event: &TxEvent, account_store: &mut AccountStore) -
             }
         }
         _ => Err(anyhow::format_err!("Unhandled event"))
-
     }
 }
-
-
 
 #[tokio::main]
 async fn main()  -> anyhow::Result<()> {
@@ -175,11 +172,10 @@ async fn main()  -> anyhow::Result<()> {
     let mut client_tx_errors = ErrorReportAnyhow::new();
 
     let file = File::open(input_path).await?;
-    let mut rdr = AsyncReaderBuilder::new().trim(csv_async::Trim::All).create_deserializer(file);
+    let rdr = AsyncReaderBuilder::new().trim(csv_async::Trim::All).create_deserializer(file);
     let mut records = rdr.into_deserialize::<TxEvent>();
 
     while let Some(record) = records.next().await {
-        
         match record {
             Ok(transaction_event) => {
 
@@ -233,22 +229,151 @@ mod tests {
 
     #[test]
     fn no_current_entry_exists_withdraw() {
+        let mut client_account_store_under_test = AccountStore::new();
+        let test_deposit_tx_event = TxEvent {
+            tx_type: "withdraw".to_string(),
+            client: 1,
+            tx: 1,
+            amount: Some(1.0),
+        };
 
+        let result_under_test = handle_account_update(&test_deposit_tx_event,  &mut client_account_store_under_test);
+        assert!(result_under_test.is_err());
+        assert_eq!(result_under_test.unwrap_err().to_string(), "Account doesn't exist cannot withdraw from an un open account");
+
+        assert_eq!(client_account_store_under_test.len(), 0);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_none());
     }
 
     #[test]
     fn simple_deposit_success() {
+        let mut client_account_store_under_test = AccountStore::new();
+        let test_deposit_tx_event = TxEvent {
+            tx_type: "deposit".to_string(),
+            client: 1,
+            tx: 1,
+            amount: Some(1.0),
+        };
+
+        let result_under_test = handle_account_update(&test_deposit_tx_event,  &mut client_account_store_under_test);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(client_account_store_under_test.len(), 1);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 1.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
+
+        let test_deposit_tx_event_two = TxEvent {
+            tx_type: "deposit".to_string(),
+            client: 1,
+            tx: 2,
+            amount: Some(5.0),
+        };
+
+        let result_under_test = handle_account_update(&test_deposit_tx_event_two,  &mut client_account_store_under_test);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(client_account_store_under_test.len(), 1);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 6.0);
+        assert_eq!(account_details.total, 6.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
 
     }
 
     #[test]
     fn simple_withdrawal_success() {
 
+        let mut client_account_store_under_test = AccountStore::new();
+        let test_deposit_tx_event = TxEvent {
+            tx_type: "deposit".to_string(),
+            client: 1,
+            tx: 1,
+            amount: Some(1.0),
+        };
+
+        let result_under_test = handle_account_update(&test_deposit_tx_event,  &mut client_account_store_under_test);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(client_account_store_under_test.len(), 1);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 1.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
+
+        let test_withdraw_tx_event_two = TxEvent {
+            tx_type: "withdraw".to_string(),
+            client: 1,
+            tx: 2,
+            amount: Some(0.5),
+        };
+
+        let result_under_test = handle_account_update(&test_withdraw_tx_event_two,  &mut client_account_store_under_test);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(client_account_store_under_test.len(), 1);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 0.5);
+        assert_eq!(account_details.total, 0.5);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
+
     }
 
     #[test]
     fn simple_withdrawal_insufficient_funds() {
+        let mut client_account_store_under_test = AccountStore::new();
+        let test_deposit_tx_event = TxEvent {
+            tx_type: "deposit".to_string(),
+            client: 1,
+            tx: 1,
+            amount: Some(1.0),
+        };
 
+        let result_under_test = handle_account_update(&test_deposit_tx_event,  &mut client_account_store_under_test);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(client_account_store_under_test.len(), 1);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 1.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
+
+        let test_withdraw_tx_event_two = TxEvent {
+            tx_type: "withdraw".to_string(),
+            client: 1,
+            tx: 2,
+            amount: Some(2.0),
+        };
+
+        let result_under_test = handle_account_update(&test_withdraw_tx_event_two,  &mut client_account_store_under_test);
+        assert_eq!(result_under_test.unwrap_err().to_string(), "Insufficient funds to perform withdrawal");
+
+
+        assert_eq!(client_account_store_under_test.len(), 1);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 1.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
     }
 
 
