@@ -46,4 +46,9 @@ A: GenerateStream<StreamItem = TxEvent>
     pub fn print_output(&self) {
         println!("{}", self.user_accounts_task_handler);
     }
+
+    pub fn _print_errors(&self) {
+        println!("{:?}", self.stream_error_handler);
+        println!("{:?}", self.client_tx_error_report);
+    }
 }

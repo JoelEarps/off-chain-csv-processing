@@ -1,6 +1,7 @@
-/// Why did I create this trait?
 use tokio_stream::Stream;
 
+/// A generic async trait that has two associated types, StreamItem and Stream
+/// This way any function that generates a stream of the associated StreamItem can be used in the system.
 #[async_trait::async_trait]
 pub trait GenerateStream {
     type StreamItem;

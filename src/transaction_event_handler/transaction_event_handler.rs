@@ -13,7 +13,7 @@ pub struct TxEvent {
     #[serde(rename = "type")]
     pub(crate) tx_type: String,
     pub(crate) client: ClientID,
-    pub(crate) _tx: TxID,
+    pub(crate) tx: TxID,
     pub(crate) amount: Option<f64>,
 }
 

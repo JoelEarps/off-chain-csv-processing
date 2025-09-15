@@ -13,8 +13,9 @@ Implementing display
 
 ## Part 2: Tidy up code into maintainable format - represented by branch name `code maintainability and reorg`
 
-My philosphy for 
 Code that follows solid principles
+Each folder represents a domain within the current system
+Types and any utils inherit the parent dir name
 
 ## Part 3: Increase Complexity - represented by branch `state-machine`
 

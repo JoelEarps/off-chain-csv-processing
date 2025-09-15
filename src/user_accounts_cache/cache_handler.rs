@@ -21,7 +21,7 @@ impl CacheHandler {
     &mut self,
     tx_event: &TxEvent,
 ) -> anyhow::Result<()> {
-    // Cannot do anything if account is null and the _tx type is not a deposit, so handle
+    // Cannot do anything if account is null and the tx type is not a deposit, so handle
     let client_account_entry = self.user_accounts_map.entry(tx_event.get_client_id());
     match tx_event.get_tx_type().as_str() {
         "deposit" => {
@@ -44,7 +44,7 @@ impl CacheHandler {
                 ));
             }
         }
-        "withdraw" => {
+        "withdrawal" => {
             if let Entry::Occupied(mut occupied_entry) = client_account_entry {
                 if let Some(valid_tx_amount) = tx_event.get_tx_amount() {
                     match occupied_entry
@@ -72,10 +72,7 @@ impl CacheHandler {
 
 impl std::fmt::Display for CacheHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            // Print the CSV header
         writeln!(f, "client,available,held,total,locked")?;
-
-        // Iterate over all accounts and print each one
         for (client_id, account) in &self.user_accounts_map {
             writeln!(
                 f,
@@ -87,7 +84,6 @@ impl std::fmt::Display for CacheHandler {
                 account._locked
             )?;
         }
-
         Ok(())
     }
 }
@@ -105,7 +101,7 @@ mod tests {
         let test_deposit_tx_event = TxEvent {
             tx_type: "deposit".to_string(),
             client: 1,
-            _tx: 1,
+            tx: 1,
             amount: Some(1.0),
         };
 
@@ -128,7 +124,7 @@ mod tests {
         let test_deposit_tx_event = TxEvent {
             tx_type: "withdraw".to_string(),
             client: 1,
-            _tx: 1,
+            tx: 1,
             amount: Some(1.0),
         };
 
@@ -150,7 +146,7 @@ mod tests {
         let test_deposit_tx_event = TxEvent {
             tx_type: "deposit".to_string(),
             client: 1,
-            _tx: 1,
+            tx: 1,
             amount: Some(1.0),
         };
 
@@ -169,7 +165,7 @@ mod tests {
         let test_deposit_tx_event_two = TxEvent {
             tx_type: "deposit".to_string(),
             client: 1,
-            _tx: 2,
+            tx: 2,
             amount: Some(5.0),
         };
 
@@ -194,7 +190,7 @@ mod tests {
         let test_deposit_tx_event = TxEvent {
             tx_type: "deposit".to_string(),
             client: 1,
-            _tx: 1,
+            tx: 1,
             amount: Some(1.0),
         };
 
@@ -213,7 +209,7 @@ mod tests {
         let test_withdraw_tx_event_two = TxEvent {
             tx_type: "withdraw".to_string(),
             client: 1,
-            _tx: 2,
+            tx: 2,
             amount: Some(0.5),
         };
 
@@ -238,7 +234,7 @@ mod tests {
         let test_deposit_tx_event = TxEvent {
             tx_type: "deposit".to_string(),
             client: 1,
-            _tx: 1,
+            tx: 1,
             amount: Some(1.0),
         };
 
@@ -257,7 +253,7 @@ mod tests {
         let test_withdraw_tx_event_two = TxEvent {
             tx_type: "withdraw".to_string(),
             client: 1,
-            _tx: 2,
+            tx: 2,
             amount: Some(2.0),
         };
 

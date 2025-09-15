@@ -9,6 +9,7 @@ use crate::transaction_event_handler::{stream_generator::GenerateStream, transac
 #[derive(Default)]
 pub struct CsvStreamHandler;
 
+/// Trait Implementation for create a stream for the CSV streamer
 #[async_trait::async_trait]
 impl GenerateStream for CsvStreamHandler {
     type StreamItem = TxEvent;
