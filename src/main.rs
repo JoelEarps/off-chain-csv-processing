@@ -1,3 +1,208 @@
-fn main() {
-    println!("Hello, world!");
+use std::{collections::{hash_map::Entry, HashMap}, env, error::Error};
+
+use csv_async::{AsyncReader, AsyncReaderBuilder};
+use serde::Deserialize;
+use tokio::fs::File;
+use tokio_stream::StreamExt;
+
+enum ValidTxTypes {
+    Deposit,
+    Withdraw,
+}
+
+#[derive(Debug, Deserialize)]
+struct TxEvent {
+    #[serde(rename = "type")]
+    // TODO: Turn into Enum for better matching and general maintainability
+    tx_type: String,
+    client: ClientID,
+    tx: TxID,
+    amount: Option<f64>,
+}
+
+struct UserAccountDetails {
+    available: f64,
+    held: f64,
+    total: f64,
+    locked: bool
+}
+
+impl UserAccountDetails {
+    /// Only can be created
+    pub fn new(deposited_amount: &f64) -> Self {
+        Self {
+            available: *deposited_amount,
+            held: 0.0,
+            total: *deposited_amount,
+            locked: false
+        }
+    }
+
+    pub fn deposit_to_account(&mut self, deposited_amount: &f64) {
+        self.available += deposited_amount;  
+        self.total = self.available + self.held;
+    }
+}
+
+#[cfg(test)]
+mod user_account_tests {
+    use crate::UserAccountDetails;
+
+
+    #[rstest::rstest]
+    #[case(5.0, vec![5.0], 10.0, 10.0)]
+    #[case(5.0, vec![5.0, 10.0, 22.5], 42.5, 42.5)]
+    fn user_account_details_create_and_deposit(#[case] initial_deposit: f64, #[case] deposit_sequence: Vec<f64>, #[case] expected_end_available: f64, #[case] expected_end_total: f64) {
+        let mut account_under_test = UserAccountDetails::new(&initial_deposit);
+        assert_eq!(account_under_test.available, initial_deposit);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+        for deposit in deposit_sequence {
+            account_under_test.deposit_to_account(&deposit);
+        }
+        assert_eq!(account_under_test.available, expected_end_available);
+        assert_eq!(account_under_test.total, expected_end_total);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+    }
+}
+
+
+// turn into associated types
+// Same with errors
+type ClientID = u16;
+type TxID = u32;
+
+type AccountStore = HashMap<ClientID, UserAccountDetails>;
+
+/// TODO - create custom struct 
+// impl std::fmt::Display for AccountStore {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         todo!()
+//     }
+// }
+
+type ErrorReport = Vec<Box<dyn Error + 'static>>;
+type ErrorReportAnyhow = Vec<anyhow::Error>;
+
+
+/// Why move handling inside here
+/// Reduction of duplicate logic
+/// TODO: turn this into struct that holds this info, rather than passing round refs you can use references to self
+fn handle_account_update(tx_event: &TxEvent, account_store: &mut AccountStore) -> anyhow::Result<()> {
+    // Cannot do anything if account is null and the tx type is not a deposit, so handle
+    let client_account_entry = account_store.entry(tx_event.client);
+    match tx_event.tx_type.as_str() {
+        "deposit" => {
+             if let Some(valid_tx_amount) = tx_event.amount {
+                        
+                        match client_account_entry {
+                            Entry::Occupied(mut occupied_entry) => {
+                                occupied_entry.get_mut().deposit_to_account(&valid_tx_amount);
+                                Ok(())
+                            },
+                            Entry::Vacant(vacant_entry) => {
+                                vacant_entry.insert( UserAccountDetails::new(&valid_tx_amount));
+                                Ok(())
+                            },
+                        } 
+                    } else {
+                        return Err(anyhow::format_err!("Cannot perform operation due to empty value, this should not be happening"))
+            }
+        },
+        "withdraw" => {
+            if let Entry::Occupied(occupied_entry) = client_account_entry {
+                Ok(())
+            } else {
+                Err(anyhow::format_err!("Account doesn't exist cannot withdraw from an un open account"))
+            }
+        }
+        _ => Err(anyhow::format_err!("Unhandled event"))
+
+    }
+}
+
+
+
+#[tokio::main]
+async fn main()  -> anyhow::Result<()> {
+    // Expect: cargo run -- transactions.csv > accounts.csv
+    let args: Vec<String> = env::args().collect();
+    let input_path = args.get(1).expect("please provide CSV file path");
+    let mut read_errors = ErrorReport::new();
+    let mut client_account_store = AccountStore::new();
+    let mut client_tx_errors = ErrorReportAnyhow::new();
+
+    let file = File::open(input_path).await?;
+    let mut rdr = AsyncReaderBuilder::new().trim(csv_async::Trim::All).create_deserializer(file);
+    let mut records = rdr.into_deserialize::<TxEvent>();
+
+    while let Some(record) = records.next().await {
+        
+        match record {
+            Ok(transaction_event) => {
+
+            match handle_account_update(&transaction_event,  &mut client_account_store) {
+                Ok(_) => {
+                    println!("Transaction handled successfully");
+                },
+                Err(error) => {
+                    client_tx_errors.push(error);
+                },
+            } 
+            },
+            Err(error) => {
+                read_errors.push(Box::new(error));
+            } 
+        }
+    }
+        
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{handle_account_update, AccountStore, TxEvent};
+
+
+    // All test Scenarios for these unit tests can be found here:
+    // docs/bdd-scenarios/deposits-and-withdrawals.feature
+    #[test]
+    fn no_current_account_entry_deposit() {
+        let mut client_account_store_under_test = AccountStore::new();
+        let test_deposit_tx_event = TxEvent {
+            tx_type: "deposit".to_string(),
+            client: 1,
+            tx: 1,
+            amount: Some(1.0),
+        };
+
+        let result_under_test = handle_account_update(&test_deposit_tx_event,  &mut client_account_store_under_test);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(client_account_store_under_test.len(), 1);
+    }
+
+    #[test]
+    fn no_current_entry_exists_withdraw() {
+
+    }
+
+    #[test]
+    fn simple_deposit_success() {
+
+    }
+
+    #[test]
+    fn simple_withdrawal_success() {
+
+    }
+
+    #[test]
+    fn simple_withdrawal_insufficient_funds() {
+
+    }
+
+
 }
