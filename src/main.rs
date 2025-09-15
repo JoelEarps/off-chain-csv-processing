@@ -28,7 +28,7 @@ struct UserAccountDetails {
 }
 
 impl UserAccountDetails {
-    /// Only can be created
+    /// Only can be created with a deposit to an account that doesn't exist in the current account cache
     pub fn new(deposited_amount: &f64) -> Self {
         Self {
             available: *deposited_amount,
@@ -41,6 +41,19 @@ impl UserAccountDetails {
     pub fn deposit_to_account(&mut self, deposited_amount: &f64) {
         self.available += deposited_amount;  
         self.total = self.available + self.held;
+    }
+
+    /// Unlike deposit, this function returns a result, this is because it is not possible more from an account than possible
+    /// If a client does not have sufficient available funds the withdrawal should fail and the total amount of funds should not change
+    pub fn withdraw_from_account(&mut self, withdraw_amount: &f64) -> anyhow::Result<(())> {
+        if self.available < *withdraw_amount {
+            Err(anyhow::anyhow!("Insufficent funds to perform withdrawal"))
+        } else {
+            self.available -= withdraw_amount;
+            self.total = self.available + self.held;
+            Ok(())
+        }
+        
     }
 }
 
@@ -60,6 +73,27 @@ mod user_account_tests {
         assert_eq!(account_under_test.held, 0.0);
         for deposit in deposit_sequence {
             account_under_test.deposit_to_account(&deposit);
+        }
+        assert_eq!(account_under_test.available, expected_end_available);
+        assert_eq!(account_under_test.total, expected_end_total);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+    }
+
+
+    #[rstest::rstest]
+    #[case(5.0, vec![5.0], vec![true], 0.0, 0.0)]
+    #[case(60.0, vec![5.0, 10.0, 22.5], vec![true, true, true], 22.5, 22.5)]
+    // In sufficent funds
+    #[case(60.0, vec![20.0, 50.0], vec![true, false], 40.0, 40.0)]
+    fn user_account_details_create_and_withdraw(#[case] initial_deposit: f64, #[case] withdrawal_sequence: Vec<f64>, #[case] success_sequence: Vec<bool>, #[case] expected_end_available: f64, #[case] expected_end_total: f64) {
+        let mut account_under_test = UserAccountDetails::new(&initial_deposit);
+        assert_eq!(account_under_test.available, initial_deposit);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+        for i in 0..withdrawal_sequence.len() {
+            assert_eq!(account_under_test.withdraw_from_account(&withdrawal_sequence[i]).is_ok(), success_sequence[i]);
         }
         assert_eq!(account_under_test.available, expected_end_available);
         assert_eq!(account_under_test.total, expected_end_total);
@@ -96,7 +130,6 @@ fn handle_account_update(tx_event: &TxEvent, account_store: &mut AccountStore) -
     match tx_event.tx_type.as_str() {
         "deposit" => {
              if let Some(valid_tx_amount) = tx_event.amount {
-                        
                         match client_account_entry {
                             Entry::Occupied(mut occupied_entry) => {
                                 occupied_entry.get_mut().deposit_to_account(&valid_tx_amount);
@@ -112,8 +145,15 @@ fn handle_account_update(tx_event: &TxEvent, account_store: &mut AccountStore) -
             }
         },
         "withdraw" => {
-            if let Entry::Occupied(occupied_entry) = client_account_entry {
-                Ok(())
+            if let Entry::Occupied(mut occupied_entry) = client_account_entry {
+                if let Some(valid_tx_amount) = tx_event.amount {
+                    match occupied_entry.get_mut().withdraw_from_account(&valid_tx_amount) {
+                        Ok(_) => Ok(()),
+                        Err(withdraw_error) => Err(withdraw_error),
+                    }
+                } else {
+                        return Err(anyhow::format_err!("Cannot perform operation due to empty value, this should not be happening"))
+                }
             } else {
                 Err(anyhow::format_err!("Account doesn't exist cannot withdraw from an un open account"))
             }
@@ -182,6 +222,13 @@ mod tests {
         assert!(result_under_test.is_ok());
 
         assert_eq!(client_account_store_under_test.len(), 1);
+        let entry_under_test = client_account_store_under_test.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 1.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
     }
 
     #[test]

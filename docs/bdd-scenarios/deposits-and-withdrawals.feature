@@ -16,7 +16,8 @@ Scenario: User Exists deposit attempted
     When A client id exists
     Then the amount deposit is made available to the user
 
-Scenario: User Exists withdraw attempted
+Scenario: User Exists withdraw attempted, sufficent funds
     Given A withdraw is found within the transaction events
-    When v
+    And the user has sufficent funds
+    When a client id exists
     Then Nothing occurs and an error is created
