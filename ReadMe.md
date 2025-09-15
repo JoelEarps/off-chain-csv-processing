@@ -8,3 +8,16 @@ The project is set up as a cargo crate, standard set up
 
 Docs folder
 
+## Run
+
+`cargo run -- transactions.csv > accounts.csv`
+
+## Build
+
+`cargo build`
+
+## Test
+
+`cargo test`
+
+### Code coverage
