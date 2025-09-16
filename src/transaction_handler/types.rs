@@ -16,7 +16,7 @@ pub(crate) enum TransactionState {
     Deposit,
     Withdraw,
     Dispute,
-    _Resolve,
+    Resolved,
     _ChargeBack,
 }
 

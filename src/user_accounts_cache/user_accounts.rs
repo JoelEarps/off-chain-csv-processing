@@ -54,6 +54,24 @@ impl UserAccountDetails {
             }
         }
     }
+
+    pub(crate) fn resolve_dispute(&mut self, amount_to_resolve: &f64) -> anyhow::Result<()> {
+         if self.held < *amount_to_resolve {
+            Err(anyhow::anyhow!("Unknown error - cannot resolve more funds than are being held"))
+        } else {
+            self.held -= amount_to_resolve;
+            self.available += amount_to_resolve;
+            
+            let old_total = self.total;
+            let new_total = self.held + self.available;
+
+            if old_total == new_total {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Unknown error - total funds in account has now changed, this should not be happening?"))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -110,6 +128,37 @@ mod user_account_tests {
         }
         assert_eq!(account_under_test.available, expected_end_available);
         assert_eq!(account_under_test.total, expected_end_total);
+        assert_eq!(account_under_test._locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+    } 
+
+
+    #[rstest::rstest]
+    #[case(5.0, 2.5)]
+    #[case(100.0, 22.5)]
+    // In sufficent funds
+    #[case(60.0, 40.0)]
+    fn deposit_to_resolution_to_dispute(
+         #[case] initial_deposit: f64,
+         #[case] dispute_amount: f64,
+    ){
+        let mut account_under_test = UserAccountDetails::new(&initial_deposit);
+        assert_eq!(account_under_test.available, initial_deposit);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test._locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+
+        let dispute_result = account_under_test.dispute_and_hold_funds(&dispute_amount);
+        assert!(dispute_result.is_ok());
+        assert_eq!(account_under_test.available, initial_deposit - dispute_amount);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test._locked, false);
+        assert_eq!(account_under_test.held, 0.0 + dispute_amount);
+
+        let resolve_result = account_under_test.resolve_dispute(&dispute_amount);
+        assert!(resolve_result.is_ok());
+        assert_eq!(account_under_test.available, initial_deposit);
+        assert_eq!(account_under_test.total, initial_deposit);
         assert_eq!(account_under_test._locked, false);
         assert_eq!(account_under_test.held, 0.0);
     }
