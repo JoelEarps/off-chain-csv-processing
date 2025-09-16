@@ -131,3 +131,43 @@ Client 1:
 Client 2:
 
 Client 2 -> + 2 - 1 = 1
+
+## Complex Case - Deposit Dispute for and chargeback for client 1 transaction 1 (5)
+
+### Input (5)
+
+```csv
+
+type, client, tx, amount
+deposit, 1, 1, 5.0
+deposit, 2, 2, 2.0
+deposit, 1, 3, 2.0
+withdrawal, 1, 4, 1.5
+withdrawal, 2, 5, 1.0
+dispute, 1, 1,
+resolve, 1, 1,
+
+```
+
+### Output (5)
+
+```csv
+
+client,available,held,total,locked
+2,1,0,1,false
+1,0.5,0,0.5,true
+
+```
+
+### Explanation (5)
+
+Client 1:
+
+1. 2 deposits of 5 + 2 -> available 7, held 0, total 7,
+2. Withdraw of 1.5 -> current available, 5.5,
+3. dispute -> available 0.5, held 5.0, total 5.5,
+4. chargeback -> available 0.5, held 0, total 0.5,
+
+Client 2:
+
+Client 2 -> + 2 - 1 = 1
