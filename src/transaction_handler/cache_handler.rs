@@ -48,7 +48,7 @@ impl TransactionCache {
         }
     }
 
-    pub fn resolution_of_dispute(
+    pub fn validate_dispute_state_of_tx_for_resolution_or_chargeback(
         &mut self,
         tx_id: &u32
     ) -> anyhow::Result<TransactionStateValueReturn>{
@@ -150,7 +150,7 @@ mod tx_cache_tests {
             amount: 1.0,
             client_id: 2,
             }, 1, true, Some((2, 1.0)), None )]
-    fn check_resolution_of_dispute  (
+    fn check_resolution_of_dispute_for_chargeback_and_resolution  (
         #[case] tx_id: u32,
         #[case] entry_to_insert: TransactionTrackerEntry,
         #[case] tx_to_fetch: u32,
@@ -162,7 +162,7 @@ mod tx_cache_tests {
         tx_tracker_under_test.record_transaction(tx_id, entry_to_insert);
 
         let transition_to_dispute_under_test =
-            tx_tracker_under_test.resolution_of_dispute(&tx_to_fetch);
+            tx_tracker_under_test.validate_dispute_state_of_tx_for_resolution_or_chargeback(&tx_to_fetch);
 
         if is_ok {
             assert!(transition_to_dispute_under_test.is_ok());

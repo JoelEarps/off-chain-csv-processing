@@ -36,6 +36,8 @@ and assume this is an error on our partners side.
 2. The TCP server improvements - stream -> channel.
 3. Undefined scenarios - what about if no amount value present in the tx, withdrawn transaction cannot create account but we then receive a dispute.
 4. Use thiserror to create definite errors for the application, leading to a better and more specific error report
+Handling of errors
+Currently, due to a lack of logging, I do not log the errors as it would create an output different to one that is being 
 5. Getters and setters to provide better encapsulation.
 6. Use of BigDecimal to stop floating point errors and therefore keep precision to 4 decimal places, f64 allows us precision of up to, but use of floating point cna lead to errors.
 7. Add a logger to enable better debugging and configurable log level.

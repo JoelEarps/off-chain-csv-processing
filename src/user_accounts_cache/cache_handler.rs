@@ -1,5 +1,7 @@
 use std::collections::hash_map::Entry;
 
+use anyhow::Context;
+
 use crate::{
     transaction_handler::{
         cache_handler::TransactionCache,
@@ -28,9 +30,13 @@ impl CacheHandler {
                 if let Some(valid_tx_amount) = tx_event.get_tx_amount() {
                     match client_account_entry {
                         Entry::Occupied(mut occupied_entry) => {
-                            occupied_entry
+                            if let Err(lock_error) = occupied_entry
                                 .get_mut()
-                                .deposit_to_account(&valid_tx_amount);
+                                .deposit_to_account(&valid_tx_amount) {
+                                         // Add context with client_id and tx_id
+                                return Err(lock_error)
+                                    .with_context(|| format!("for client {} and tx {}", tx_event.get_client_id(), tx_event.tx));
+                            }
                         }
                         Entry::Vacant(vacant_entry) => {
                             vacant_entry.insert(UserAccountDetails::new(&valid_tx_amount));
@@ -67,7 +73,9 @@ impl CacheHandler {
                                     .record_transaction(tx_event.tx, transaction_tracker_entry);
                                 Ok(())
                             }
-                            Err(withdraw_error) => Err(withdraw_error),
+                            Err(withdraw_error) => {
+                                return Err(withdraw_error).with_context(|| format!("for client {} and tx {}", tx_event.get_client_id(), tx_event.tx));
+                            }
                         }
                     } else {
                         return Err(anyhow::format_err!(
@@ -106,13 +114,35 @@ impl CacheHandler {
             "resolve" => {
                 match self
                     .transaction_store
-                    .resolution_of_dispute(&tx_event.tx)
+                    .validate_dispute_state_of_tx_for_resolution_or_chargeback(&tx_event.tx)
                 {
                     Ok((_client_id, amount_to_resolve)) => {
                         if let Entry::Occupied(mut occupied_entry) = client_account_entry {
                             match occupied_entry
                                 .get_mut()
                                 .resolve_dispute(&amount_to_resolve) {
+                                    Ok(_) => Ok(()),
+                                    Err(resolution_adjustment_error) => Err(resolution_adjustment_error)
+                                }
+                        } else {
+                            Err(anyhow::format_err!(
+                        "Account doesn't exist cannot dispute events that are not linked to a valid client id"
+                    ))
+                        }
+                    }
+                    Err(resolution_error) => Err(resolution_error),
+                }
+            },
+            "chargeback" => {
+                 match self
+                    .transaction_store
+                    .validate_dispute_state_of_tx_for_resolution_or_chargeback(&tx_event.tx)
+                {
+                    Ok((_client_id, amount_to_resolve)) => {
+                        if let Entry::Occupied(mut occupied_entry) = client_account_entry {
+                            match occupied_entry
+                                .get_mut()
+                                .perform_chargeback(&amount_to_resolve) {
                                     Ok(_) => Ok(()),
                                     Err(dispute_adjustment_error) => Err(dispute_adjustment_error)
                                 }
@@ -137,7 +167,7 @@ impl std::fmt::Display for CacheHandler {
             writeln!(
                 f,
                 "{},{},{},{},{}",
-                client_id, account.available, account.held, account.total, account._locked
+                client_id, account.available, account.held, account.total, account.locked
             )?;
         }
         Ok(())
@@ -169,7 +199,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 1.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
     }
 
@@ -177,7 +207,7 @@ mod tests {
     fn no_current_entry_exists_withdraw() {
         let mut cache_handler = CacheHandler::new();
         let test_deposit_tx_event = TxEvent {
-            tx_type: "withdraw".to_string(),
+            tx_type: "withdrawal".to_string(),
             client: 1,
             tx: 1,
             amount: Some(1.0),
@@ -214,7 +244,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 1.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
 
         let test_deposit_tx_event_two = TxEvent {
@@ -233,7 +263,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 6.0);
         assert_eq!(account_details.total, 6.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
     }
 
@@ -256,11 +286,11 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 1.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
 
         let test_withdraw_tx_event_two = TxEvent {
-            tx_type: "withdraw".to_string(),
+            tx_type: "withdrawal".to_string(),
             client: 1,
             tx: 2,
             amount: Some(0.5),
@@ -275,7 +305,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 0.5);
         assert_eq!(account_details.total, 0.5);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
     }
 
@@ -299,21 +329,20 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 1.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
 
         let test_withdraw_tx_event_two = TxEvent {
-            tx_type: "withdraw".to_string(),
+            tx_type: "withdrawal".to_string(),
             client: 1,
             tx: 2,
             amount: Some(2.0),
         };
 
         let result_under_test = cache_handler.handle_account_update(&test_withdraw_tx_event_two);
-        assert_eq!(
-            result_under_test.unwrap_err().to_string(),
-            "Insufficient funds to perform withdrawal"
-        );
+        let msg = format!("{:#}", result_under_test.unwrap_err()); 
+        assert!(msg.contains("for client 1 and tx 2"));
+        assert!(msg.contains("Insufficient funds to perform withdrawal"));
 
         assert_eq!(cache_handler.user_accounts_map.len(), 1);
         let entry_under_test = cache_handler.user_accounts_map.get(&1);
@@ -321,7 +350,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 1.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
     }
 
@@ -345,7 +374,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 1.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
         assert_eq!(cache_handler.transaction_store.transactions.len(), 1);
 
@@ -365,7 +394,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 6.0);
         assert_eq!(account_details.total, 6.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
         assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
 
@@ -383,7 +412,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 6.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 5.0);
         assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
     }
@@ -409,7 +438,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 1.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
         assert_eq!(cache_handler.transaction_store.transactions.len(), 1);
 
@@ -429,7 +458,7 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 6.0);
         assert_eq!(account_details.total, 6.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 0.0);
         assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
 
@@ -447,10 +476,126 @@ mod tests {
         let account_details = entry_under_test.unwrap();
         assert_eq!(account_details.available, 1.0);
         assert_eq!(account_details.total, 6.0);
-        assert_eq!(account_details._locked, false);
+        assert_eq!(account_details.locked, false);
         assert_eq!(account_details.held, 5.0);
         assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
 
         // Check resolution here
+
+        let test_deposit_tx_event_three = TxEvent {
+            tx_type: "resolve".to_string(),
+            client: 1,
+            tx: 2,
+            amount: None
+        };
+
+        let result_under_test = cache_handler.handle_account_update(&test_deposit_tx_event_three);
+        assert!(result_under_test.is_ok());
+        let entry_under_test = cache_handler.user_accounts_map.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 6.0);
+        assert_eq!(account_details.total, 6.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
+        assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
+
     }
+
+    #[test]
+    fn check_deposit_dispute_and_chargeback_flow() {
+        let mut cache_handler = CacheHandler::new();
+        assert_eq!(cache_handler.transaction_store.transactions.len(), 0);
+        let test_deposit_tx_event = TxEvent {
+            tx_type: "deposit".to_string(),
+            client: 1,
+            tx: 1,
+            amount: Some(1.0),
+        };
+
+        let result_under_test = cache_handler.handle_account_update(&test_deposit_tx_event);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(cache_handler.user_accounts_map.len(), 1);
+        let entry_under_test = cache_handler.user_accounts_map.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 1.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
+        assert_eq!(cache_handler.transaction_store.transactions.len(), 1);
+
+        let test_deposit_tx_event_two = TxEvent {
+            tx_type: "deposit".to_string(),
+            client: 1,
+            tx: 2,
+            amount: Some(5.0),
+        };
+
+        let result_under_test = cache_handler.handle_account_update(&test_deposit_tx_event_two);
+        assert!(result_under_test.is_ok());
+
+        assert_eq!(cache_handler.user_accounts_map.len(), 1);
+        let entry_under_test = cache_handler.user_accounts_map.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 6.0);
+        assert_eq!(account_details.total, 6.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 0.0);
+        assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
+
+        let test_deposit_tx_event_three = TxEvent {
+            tx_type: "dispute".to_string(),
+            client: 1,
+            tx: 2,
+            amount: None
+        };
+
+        let result_under_test = cache_handler.handle_account_update(&test_deposit_tx_event_three);
+        assert!(result_under_test.is_ok());
+        let entry_under_test = cache_handler.user_accounts_map.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 6.0);
+        assert_eq!(account_details.locked, false);
+        assert_eq!(account_details.held, 5.0);
+        assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
+
+        let test_deposit_tx_event_three = TxEvent {
+            tx_type: "chargeback".to_string(),
+            client: 1,
+            tx: 2,
+            amount: None
+        };
+
+        let result_under_test = cache_handler.handle_account_update(&test_deposit_tx_event_three);
+        assert!(result_under_test.is_ok());
+        let entry_under_test = cache_handler.user_accounts_map.get(&1);
+        assert!(entry_under_test.is_some());
+        let account_details = entry_under_test.unwrap();
+        assert_eq!(account_details.available, 1.0);
+        assert_eq!(account_details.total, 1.0);
+        assert_eq!(account_details.locked, true);
+        assert_eq!(account_details.held, 0.0);
+        assert_eq!(cache_handler.transaction_store.transactions.len(), 2);
+
+         let test_deposit_tx_event_four = TxEvent {
+            tx_type: "withdrawal".to_string(),
+            client: 1,
+            tx: 3,
+            amount: Some(1.0)
+        };
+
+        let result_under_test = cache_handler.handle_account_update(&test_deposit_tx_event_four);
+        assert!(result_under_test.is_err());
+        let msg = format!("{:#}", result_under_test.unwrap_err()); 
+        assert!(msg.contains("for client 1 and tx 3"));
+        assert!(msg.contains("User account is locked"));
+
+    }
+
+    
 }
