@@ -42,33 +42,64 @@ impl TransactionCache {
                 }
             }
         } else {
-            Err(anyhow::anyhow!("Transaction doesn't exist and there"))
+            Err(anyhow::anyhow!("Transaction doesn't exist and therefore can be ignored"))
         }
-
-        // Change the entry to a dispute
-
-        // Return amount to be removed/ added from user total
     }
 }
 
 #[cfg(test)]
 mod tx_cache_tests {
-    use crate::transaction_handler::types::{TransactionTracker, TransactionTrackerEntry};
+    use crate::transaction_handler::{
+        cache_handler::TransactionCache,
+        types::{
+            TransactionState, TransactionStateValueReturn, TransactionTracker,
+            TransactionTrackerEntry,
+        },
+    };
 
     #[rstest::rstest]
-    #[case(1, TransactionTrackerEntry {
+    #[case(1, 
+        TransactionTrackerEntry {
             state: TransactionState::Withdraw,
-                                amount: 1.0,
-                                client_id: 2,
-                            }, 1, false, None, Some("Cannot create a disupte in any state other than Deposit") )]
+            amount: 1.0,
+            client_id: 2,
+            }, 1, false, None, Some("Cannot create a disupte in any state other than Deposit") )]
+    #[case(1, 
+        TransactionTrackerEntry {
+            state: TransactionState::Deposit,
+            amount: 1.0,
+            client_id: 2,
+            }, 1, true, Some((2, 1.0)), None )]
+    #[case(1, 
+        TransactionTrackerEntry {
+            state: TransactionState::Deposit,
+            amount: 1.0,
+            client_id: 2,
+            }, 5, false, None, Some("Transaction doesn't exist and therefore can be ignored") )]
     fn check_dispute_transition(
         #[case] tx_id: u32,
         #[case] entry_to_insert: TransactionTrackerEntry,
         #[case] tx_to_fetch: u32,
         #[case] is_ok: bool,
-        expected_success: Option<TransactionStateValueReturn>,
-        expected_failure_message: Option<&str>,
+        #[case] expected_success: Option<TransactionStateValueReturn>,
+        #[case] expected_failure_message: Option<&str>,
     ) {
-        let tx_tracker_under_test = TransactionTracker::new();
+        let mut tx_tracker_under_test = TransactionCache::new();
+        tx_tracker_under_test.record_transaction(tx_id, entry_to_insert);
+        let transition_to_dispute_under_test =
+            tx_tracker_under_test.get_valid_tx_and_create_dispute(&tx_to_fetch);
+        if is_ok {
+            assert!(transition_to_dispute_under_test.is_ok());
+            assert_eq!(
+                transition_to_dispute_under_test.unwrap(),
+                expected_success.unwrap()
+            );
+        } else {
+            assert!(transition_to_dispute_under_test.is_err());
+            assert_eq!(
+                transition_to_dispute_under_test.unwrap_err().to_string(),
+                expected_failure_message.unwrap().to_string()
+            )
+        }
     }
 }
