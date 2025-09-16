@@ -32,12 +32,14 @@ and assume this is an error on our partners side.
 ## How I would improve the current system and expand
 
 1. Use typestate to create a state machine to only allow transitions of the states for Dispute -> Resolve -> Chargeback.
+1a. could also use macro to remove much of the duplicated logic created by functions such as `dispute_and_hold_funds` and `resolve_dispute`
 2. The TCP server improvements - stream -> channel.
 3. Undefined scenarios - what about if no amount value present in the tx, withdrawn transaction cannot create account but we then receive a dispute.
 4. Use thiserror to create definite errors for the application, leading to a better and more specific error report
 5. Getters and setters to provide better encapsulation.
-6. Use of BigDecimal to stop floating point errors and therefore keep precision to 4 decimal places.
+6. Use of BigDecimal to stop floating point errors and therefore keep precision to 4 decimal places, f64 allows us precision of up to, but use of floating point cna lead to errors.
 7. Add a logger to enable better debugging and configurable log level.
 8. Create config for type of stream being created and any secrets/ config data that may be required.
 9. Create two separate tasks running with a channel between them to handle asynchronous handling of stream reading and account cache updates.
 10. Handle disputes on withdraws, I am not sure if these were relevant as they don't quite make sense from a held funds perspective, as you cannot hold withdrawn funds, its more like you give the person credit however what about if the dispute is wrong? Doesn't make sense from the banks perspective.
+11. Handling failure to have comma at the end

@@ -33,4 +33,7 @@ Docs folder
 
 ## Branch documentation
 
-Please see `docs/how-i-handle-problems.md` to view how I handled each problem and what each branch means.
+Please see `docs/how-i-handle-problems.md` to view how I handled each problem and what each branch means
+Please see `docs/software-flow.md` to view how the software works via a mermaid diagram.
+Please see `docs/bdd-scenarios` for all scenarios covered by the application, written in Gherkin Syntax.
+Please see `docs/decision-docs` for a list of decision e.g. arch, generics and crates.
