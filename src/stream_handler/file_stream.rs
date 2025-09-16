@@ -1,6 +1,6 @@
-use std::{env};
+use std::env;
 
-use csv_async::{AsyncReaderBuilder};
+use csv_async::AsyncReaderBuilder;
 use futures::{stream::BoxStream, StreamExt, TryStreamExt};
 use tokio::fs::File;
 
@@ -23,6 +23,9 @@ impl GenerateStream for CsvStreamHandler {
         let rdr = AsyncReaderBuilder::new()
             .trim(csv_async::Trim::All)
             .create_deserializer(file);
-        Ok(rdr.into_deserialize::<TxEvent>().map_err(|e| anyhow::anyhow!(e)).boxed())
+        Ok(rdr
+            .into_deserialize::<TxEvent>()
+            .map_err(|e| anyhow::anyhow!(e))
+            .boxed())
     }
 }

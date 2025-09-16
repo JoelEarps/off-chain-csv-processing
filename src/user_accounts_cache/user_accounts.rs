@@ -1,4 +1,3 @@
-
 pub(crate) struct UserAccountDetails {
     pub(crate) available: f64,
     pub(crate) held: f64,

@@ -1,7 +1,7 @@
-pub(crate) mod user_accounts_cache;
+pub mod application_component_manager;
 pub(crate) mod stream_handler;
 pub(crate) mod transaction_handler;
-pub mod application_component_manager;
+pub(crate) mod user_accounts_cache;
 
 /// Made public to enable tests with different streams
 pub use user_accounts_cache::cache_handler::CacheHandler;

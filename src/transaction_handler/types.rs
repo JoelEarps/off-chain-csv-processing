@@ -1,23 +1,23 @@
 use std::collections::{HashMap, HashSet};
 
-pub type TransactionTracker = HashMap<TxID, TransactionState>;
+pub type TransactionTracker = HashMap<TxID, TransactionTrackerEntry>;
 
 use serde::Deserialize;
 
-pub(crate) enum TransactionState {
-    Deposit((ClientID, f64)),
-    Withdraw((ClientID, f64)),
-    Dispute(ClientID, f64),
-    Resolve(ClientID),
-    ChargeBack(ClientID),
+pub type TransactionStateValueReturn = (ClientID, f64);
+
+pub struct TransactionTrackerEntry {
+    pub(crate) state: TransactionState,
+    pub(crate) amount: f64,
+    pub(crate) client_id: ClientID,
 }
 
-impl TransactionState {
-
-
-    fn get_current_state(&self) {
-
-    }
+pub(crate) enum TransactionState {
+    Deposit,
+    Withdraw,
+    Dispute,
+    Resolve,
+    ChargeBack,
 }
 
 pub(crate) type ClientID = u16;

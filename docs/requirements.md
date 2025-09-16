@@ -21,7 +21,9 @@ of funds should not change
 
 1. Transactions are loaded in chronological order - therefore no need for ordering
 2. Precision of 4 places.
-3. When an account is locked no other tx's can be performed unless the next state is relevant
+3. When an account is locked no other tx's can be performed unless the next state is relevant.
+4. If the tx specified by the dispute doesn't exist you can ignore it
+and assume this is an error on our partners side.
 
 ## Out of scope
 
@@ -38,3 +40,4 @@ of funds should not change
 7. Add a logger to enable better debugging and configurable log level.
 8. Create config for type of stream being created and any secrets/ config data that may be required.
 9. Create two separate tasks running with a channel between them to handle asynchronous handling of stream reading and account cache updates.
+10. Handle disputes on withdraws, I am not sure if these were relevant as they don't quite make sense from a held funds perspective, as you cannot hold withdrawn funds, its more like you give the person credit however what about if the dispute is wrong? Doesn't make sense from the banks perspective.

@@ -8,4 +8,3 @@ async fn main() -> anyhow::Result<()> {
     application_manager.print_output();
     Ok(())
 }
-

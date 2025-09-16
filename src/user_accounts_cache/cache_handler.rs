@@ -1,73 +1,98 @@
 use std::collections::hash_map::Entry;
 
-use crate::{transaction_handler::types::{TransactionTracker, TxEvent}, user_accounts_cache::{types::AccountStore, user_accounts::UserAccountDetails}};
+use crate::{
+    transaction_handler::{
+        cache_handler::TransactionCache,
+        types::{TransactionState, TransactionTracker, TransactionTrackerEntry, TxEvent},
+    },
+    user_accounts_cache::{types::AccountStore, user_accounts::UserAccountDetails},
+};
 
 pub struct CacheHandler {
     user_accounts_map: AccountStore,
-    transaction_store: TransactionTracker
+    transaction_store: TransactionCache,
 }
 
 impl CacheHandler {
-
     pub(crate) fn new() -> Self {
         Self {
             user_accounts_map: AccountStore::new(),
-            transaction_store: TransactionTracker::new(),
+            transaction_store: TransactionCache::new(),
         }
     }
 
-
-    pub(crate) fn handle_account_update(
-    &mut self,
-    tx_event: &TxEvent,
-) -> anyhow::Result<()> {
-    // Cannot do anything if account is null and the tx type is not a deposit, so handle
-    let client_account_entry = self.user_accounts_map.entry(tx_event.get_client_id());
-    match tx_event.get_tx_type().as_str() {
-        "deposit" => {
-            if let Some(valid_tx_amount) = tx_event.get_tx_amount() {
-                match client_account_entry {
-                    Entry::Occupied(mut occupied_entry) => {
-                        occupied_entry
-                            .get_mut()
-                            .deposit_to_account(&valid_tx_amount);
-                        Ok(())
-                    }
-                    Entry::Vacant(vacant_entry) => {
-                        vacant_entry.insert(UserAccountDetails::new(&valid_tx_amount));
-                        Ok(())
-                    }
-                }
-            } else {
-                return Err(anyhow::format_err!(
-                    "Cannot perform operation due to empty value, this should not be happening"
-                ));
-            }
-        }
-        "withdrawal" => {
-            if let Entry::Occupied(mut occupied_entry) = client_account_entry {
+    pub(crate) fn handle_account_update(&mut self, tx_event: &TxEvent) -> anyhow::Result<()> {
+        let client_account_entry = self.user_accounts_map.entry(tx_event.get_client_id());
+        match tx_event.get_tx_type().as_str() {
+            "deposit" => {
                 if let Some(valid_tx_amount) = tx_event.get_tx_amount() {
-                    match occupied_entry
-                        .get_mut()
-                        .withdraw_from_account(&valid_tx_amount)
-                    {
-                        Ok(_) => Ok(()),
-                        Err(withdraw_error) => Err(withdraw_error),
+                    match client_account_entry {
+                        Entry::Occupied(mut occupied_entry) => {
+                            occupied_entry
+                                .get_mut()
+                                .deposit_to_account(&valid_tx_amount);
+                        }
+                        Entry::Vacant(vacant_entry) => {
+                            vacant_entry.insert(UserAccountDetails::new(&valid_tx_amount));
+                        }
                     }
+                    let transaction_tracker_entry = TransactionTrackerEntry {
+                        state: TransactionState::Deposit,
+                        amount: valid_tx_amount,
+                        client_id: tx_event.get_client_id(),
+                    };
+                    self.transaction_store
+                        .record_transaction(tx_event.tx, transaction_tracker_entry);
+                    Ok(())
                 } else {
                     return Err(anyhow::format_err!(
                         "Cannot perform operation due to empty value, this should not be happening"
                     ));
                 }
-            } else {
-                Err(anyhow::format_err!(
-                    "Account doesn't exist cannot withdraw from an un open account"
-                ))
             }
+            "withdrawal" => {
+                if let Entry::Occupied(mut occupied_entry) = client_account_entry {
+                    if let Some(valid_tx_amount) = tx_event.get_tx_amount() {
+                        match occupied_entry
+                            .get_mut()
+                            .withdraw_from_account(&valid_tx_amount)
+                        {
+                            Ok(_) => {
+                                let transaction_tracker_entry = TransactionTrackerEntry {
+                                    state: TransactionState::Withdraw,
+                                    amount: valid_tx_amount,
+                                    client_id: tx_event.get_client_id(),
+                                };
+                                self.transaction_store
+                                    .record_transaction(tx_event.tx, transaction_tracker_entry);
+                                Ok(())
+                            }
+                            Err(withdraw_error) => Err(withdraw_error),
+                        }
+                    } else {
+                        return Err(anyhow::format_err!(
+                        "Cannot perform operation due to empty value, this should not be happening"
+                    ));
+                    }
+                } else {
+                    Err(anyhow::format_err!(
+                        "Account doesn't exist cannot withdraw from an un open account"
+                    ))
+                }
+            }
+            "dispute" => {
+                // Fetch the transaction from the transaction store
+                match self
+                    .transaction_store
+                    .get_valid_tx_and_create_dispute(&tx_event.tx)
+                {
+                    Ok(_) => todo!(),
+                    Err(_) => todo!(),
+                }
+            }
+            _ => Err(anyhow::format_err!("Unhandled event")),
         }
-        _ => Err(anyhow::format_err!("Unhandled event")),
     }
-}
 }
 
 impl std::fmt::Display for CacheHandler {
@@ -77,11 +102,7 @@ impl std::fmt::Display for CacheHandler {
             writeln!(
                 f,
                 "{},{},{},{},{}",
-                client_id,
-                account.available,
-                account.held,
-                account.total,
-                account._locked
+                client_id, account.available, account.held, account.total, account._locked
             )?;
         }
         Ok(())
@@ -91,7 +112,6 @@ impl std::fmt::Display for CacheHandler {
 #[cfg(test)]
 mod tests {
     use crate::{transaction_handler::types::TxEvent, CacheHandler};
-
 
     // All test Scenarios for these unit tests can be found here:
     // docs/bdd-scenarios/deposits-and-withdrawals.feature
@@ -169,9 +189,7 @@ mod tests {
             amount: Some(5.0),
         };
 
-        let result_under_test = cache_handler.handle_account_update(
-            &test_deposit_tx_event_two,
-        );
+        let result_under_test = cache_handler.handle_account_update(&test_deposit_tx_event_two);
         assert!(result_under_test.is_ok());
 
         assert_eq!(cache_handler.user_accounts_map.len(), 1);
@@ -213,9 +231,7 @@ mod tests {
             amount: Some(0.5),
         };
 
-        let result_under_test = cache_handler.handle_account_update(
-            &test_withdraw_tx_event_two
-        );
+        let result_under_test = cache_handler.handle_account_update(&test_withdraw_tx_event_two);
         assert!(result_under_test.is_ok());
 
         assert_eq!(cache_handler.user_accounts_map.len(), 1);
@@ -257,9 +273,7 @@ mod tests {
             amount: Some(2.0),
         };
 
-        let result_under_test = cache_handler.handle_account_update(
-            &test_withdraw_tx_event_two,
-        );
+        let result_under_test = cache_handler.handle_account_update(&test_withdraw_tx_event_two);
         assert_eq!(
             result_under_test.unwrap_err().to_string(),
             "Insufficient funds to perform withdrawal"
@@ -275,4 +289,3 @@ mod tests {
         assert_eq!(account_details.held, 0.0);
     }
 }
-
