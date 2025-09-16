@@ -61,3 +61,33 @@ client,available,held,total,locked
 
 Client 1 -> + 1 + 2 - -5 (can't happen, nothing changes) = 3
 Client 2 -> + 2 - 3 (can't happen, nothing changes) = 2
+
+## Complex Case - Deposit Dispute for 1 client 1 transaction (3)
+
+### Input (3)
+
+```csv
+
+deposit, 1, 1, 1.0
+deposit, 2, 2, 2.0
+deposit, 1, 3, 2.0
+withdrawal, 1, 4, 1.5
+withdrawal, 2, 5, 1.0
+dispute 1, 1
+
+```
+
+### Output (3)
+
+```csv
+
+client,available,held,total,locked
+2,1,0,1,false
+1,0.5,1,1.5,false
+
+```
+
+### Explanation (3)
+
+Client 1 -> + 1 + 2 - 1.5 -> dispute of 1.0 = (available 0.5, held 1.0)
+Client 2 -> + 2 - 1 = 1

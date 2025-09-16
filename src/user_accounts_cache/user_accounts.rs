@@ -32,6 +32,28 @@ impl UserAccountDetails {
             Ok(())
         }
     }
+
+    /// This function manipulates the held values when being disputed
+    /// There are two scenarios checked here for unknown failures:
+    /// 1. The dispute amount is larger than available - this is an unknown scenario 
+    /// 2. The total amount of funds has changed, which again should not be happening
+    pub(crate) fn dispute_and_hold_funds(&mut self, hold_amount: &f64) -> anyhow::Result<()> {
+        if self.available < *hold_amount {
+            Err(anyhow::anyhow!("Unknown error - dispute amount is larger than available amount, this should not be happening?"))
+        } else {
+            self.available -= hold_amount;
+            self.held += hold_amount;
+            
+            let old_total = self.total;
+            let new_total = self.held + self.available;
+
+            if old_total == new_total {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Unknown error - total funds in account has now changed, this should not be happening?"))
+            }
+        }
+    }
 }
 
 #[cfg(test)]

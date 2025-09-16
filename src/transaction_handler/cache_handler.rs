@@ -3,7 +3,7 @@ use crate::transaction_handler::types::{
 };
 
 pub(crate) struct TransactionCache {
-    transactions: TransactionTracker,
+    pub(crate) transactions: TransactionTracker,
 }
 
 impl TransactionCache {
@@ -42,7 +42,9 @@ impl TransactionCache {
                 }
             }
         } else {
-            Err(anyhow::anyhow!("Transaction doesn't exist and therefore can be ignored"))
+            Err(anyhow::anyhow!(
+                "Transaction doesn't exist and therefore can be ignored"
+            ))
         }
     }
 }
@@ -51,26 +53,23 @@ impl TransactionCache {
 mod tx_cache_tests {
     use crate::transaction_handler::{
         cache_handler::TransactionCache,
-        types::{
-            TransactionState, TransactionStateValueReturn, TransactionTracker,
-            TransactionTrackerEntry,
-        },
+        types::{TransactionState, TransactionStateValueReturn, TransactionTrackerEntry},
     };
 
     #[rstest::rstest]
-    #[case(1, 
+    #[case(1,
         TransactionTrackerEntry {
             state: TransactionState::Withdraw,
             amount: 1.0,
             client_id: 2,
             }, 1, false, None, Some("Cannot create a disupte in any state other than Deposit") )]
-    #[case(1, 
+    #[case(1,
         TransactionTrackerEntry {
             state: TransactionState::Deposit,
             amount: 1.0,
             client_id: 2,
             }, 1, true, Some((2, 1.0)), None )]
-    #[case(1, 
+    #[case(1,
         TransactionTrackerEntry {
             state: TransactionState::Deposit,
             amount: 1.0,

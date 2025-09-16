@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub type TransactionTracker = HashMap<TxID, TransactionTrackerEntry>;
 
@@ -16,8 +16,8 @@ pub(crate) enum TransactionState {
     Deposit,
     Withdraw,
     Dispute,
-    Resolve,
-    ChargeBack,
+    _Resolve,
+    _ChargeBack,
 }
 
 pub(crate) type ClientID = u16;
