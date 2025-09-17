@@ -145,7 +145,8 @@ deposit, 1, 3, 2.0
 withdrawal, 1, 4, 1.5
 withdrawal, 2, 5, 1.0
 dispute, 1, 1,
-resolve, 1, 1,
+chargeback, 1, 1,
+deposit, 1, 3, 100.0
 
 ```
 
@@ -167,6 +168,7 @@ Client 1:
 2. Withdraw of 1.5 -> current available, 5.5,
 3. dispute -> available 0.5, held 5.0, total 5.5,
 4. chargeback -> available 0.5, held 0, total 0.5,
+5. deposit -> 100.0 failed as locked
 
 Client 2:
 
