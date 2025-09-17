@@ -20,4 +20,4 @@ Scenario: User Exists withdraw attempted, sufficent funds
     Given A withdraw is found within the transaction events
     And the user has sufficent funds
     When a client id exists
-    Then Nothing occurs and an error is created
+    Then the amount is subtracted from the available and total

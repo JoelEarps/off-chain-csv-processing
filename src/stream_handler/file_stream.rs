@@ -1,10 +1,11 @@
-use std::{env};
+use std::env;
 
-use csv_async::{AsyncReaderBuilder};
+use csv_async::AsyncReaderBuilder;
 use futures::{stream::BoxStream, StreamExt, TryStreamExt};
 use tokio::fs::File;
 
-use crate::transaction_event_handler::{stream_generator::GenerateStream, transaction_event_handler::TxEvent};
+use crate::stream_handler::stream_generator::GenerateStream;
+use crate::transaction_handler::types::TxEvent;
 
 #[derive(Default)]
 pub struct CsvStreamHandler;
@@ -22,6 +23,9 @@ impl GenerateStream for CsvStreamHandler {
         let rdr = AsyncReaderBuilder::new()
             .trim(csv_async::Trim::All)
             .create_deserializer(file);
-        Ok(rdr.into_deserialize::<TxEvent>().map_err(|e| anyhow::anyhow!(e)).boxed())
+        Ok(rdr
+            .into_deserialize::<TxEvent>()
+            .map_err(|e| anyhow::anyhow!(e))
+            .boxed())
     }
 }

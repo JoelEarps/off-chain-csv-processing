@@ -1,9 +1,8 @@
-
 pub(crate) struct UserAccountDetails {
     pub(crate) available: f64,
     pub(crate) held: f64,
     pub(crate) total: f64,
-    pub(crate) _locked: bool,
+    pub(crate) locked: bool,
 }
 
 impl UserAccountDetails {
@@ -13,18 +12,29 @@ impl UserAccountDetails {
             available: *deposited_amount,
             held: 0.0,
             total: *deposited_amount,
-            _locked: false,
+            locked: false,
         }
     }
 
-    pub(crate) fn deposit_to_account(&mut self, deposited_amount: &f64) {
+    fn check_if_locked(&self) -> anyhow::Result<()> {
+         if self.locked {
+            Err(anyhow::anyhow!("User account is locked"))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn deposit_to_account(&mut self, deposited_amount: &f64) -> anyhow::Result<()> {
+        self.check_if_locked()?;
         self.available += deposited_amount;
         self.total = self.available + self.held;
+        Ok(())
     }
 
     /// Unlike deposit, this function returns a result, this is because it is not possible more from an account than possible
     /// If a client does not have sufficient available funds the withdrawal should fail and the total amount of funds should not change
     pub(crate) fn withdraw_from_account(&mut self, withdraw_amount: &f64) -> anyhow::Result<()> {
+        self.check_if_locked()?;
         if self.available < *withdraw_amount {
             Err(anyhow::anyhow!("Insufficient funds to perform withdrawal"))
         } else {
@@ -32,6 +42,66 @@ impl UserAccountDetails {
             self.total = self.available + self.held;
             Ok(())
         }
+    }
+
+    /// This function manipulates the held values when being disputed
+    /// There are two scenarios checked here for unknown failures:
+    /// 1. The dispute amount is larger than available - this is an unknown scenario 
+    /// 2. The total amount of funds has changed, which again should not be happening
+    pub(crate) fn dispute_and_hold_funds(&mut self, hold_amount: &f64) -> anyhow::Result<()> {
+        self.check_if_locked()?;
+        if self.available < *hold_amount {
+            Err(anyhow::anyhow!("Unknown error - dispute amount is larger than available amount, this should not be happening?"))
+        } else {
+            self.available -= hold_amount;
+            self.held += hold_amount;
+            
+            let old_total = self.total;
+            let new_total = self.held + self.available;
+
+            if old_total == new_total {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Unknown error - total funds in account has now changed, this should not be happening?"))
+            }
+        }
+    }
+
+    /// Dispute resolved, funds that were held now made available again.
+    pub(crate) fn resolve_dispute(&mut self, amount_to_resolve: &f64) -> anyhow::Result<()> {
+        self.check_if_locked()?;
+         if self.held < *amount_to_resolve {
+            Err(anyhow::anyhow!("Unknown error - cannot resolve more funds than are being held"))
+        } else {
+            self.held -= amount_to_resolve;
+            self.available += amount_to_resolve;
+            
+            let old_total = self.total;
+            let new_total = self.held + self.available;
+
+            if old_total == new_total {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Unknown error - total funds in account has now changed, this should not be happening?"))
+            }
+        }
+    }
+
+    /// Perform a charge back: clients held funds and total funds should decrease by the amount previously disputed. 
+    /// If a chargeback occurs the client's account should be immediately frozen.
+    /// If the users chargeback somehow is more than what is held and the total, then we set the relative field to 0, as again, we do not have the concept of credit
+    pub (crate) fn perform_chargeback(&mut self, amount_to_chargeback: &f64) -> anyhow::Result<()> {
+        self.check_if_locked()?;
+        self.locked = true;
+        if self.held < *amount_to_chargeback {
+            self.held = 0.0;
+        } else if self.total < *amount_to_chargeback {
+            self.total = 0.0;
+        } else {
+            self.held -= amount_to_chargeback;
+            self.total -= amount_to_chargeback;
+        }
+        Ok(())
     }
 }
 
@@ -51,14 +121,15 @@ mod user_account_tests {
         let mut account_under_test = UserAccountDetails::new(&initial_deposit);
         assert_eq!(account_under_test.available, initial_deposit);
         assert_eq!(account_under_test.total, initial_deposit);
-        assert_eq!(account_under_test._locked, false);
+        assert_eq!(account_under_test.locked, false);
         assert_eq!(account_under_test.held, 0.0);
         for deposit in deposit_sequence {
-            account_under_test.deposit_to_account(&deposit);
+            let deposit_result = account_under_test.deposit_to_account(&deposit);
+            assert!(deposit_result.is_ok());
         }
         assert_eq!(account_under_test.available, expected_end_available);
         assert_eq!(account_under_test.total, expected_end_total);
-        assert_eq!(account_under_test._locked, false);
+        assert_eq!(account_under_test.locked, false);
         assert_eq!(account_under_test.held, 0.0);
     }
 
@@ -77,7 +148,7 @@ mod user_account_tests {
         let mut account_under_test = UserAccountDetails::new(&initial_deposit);
         assert_eq!(account_under_test.available, initial_deposit);
         assert_eq!(account_under_test.total, initial_deposit);
-        assert_eq!(account_under_test._locked, false);
+        assert_eq!(account_under_test.locked, false);
         assert_eq!(account_under_test.held, 0.0);
         for i in 0..withdrawal_sequence.len() {
             assert_eq!(
@@ -89,7 +160,72 @@ mod user_account_tests {
         }
         assert_eq!(account_under_test.available, expected_end_available);
         assert_eq!(account_under_test.total, expected_end_total);
-        assert_eq!(account_under_test._locked, false);
+        assert_eq!(account_under_test.locked, false);
         assert_eq!(account_under_test.held, 0.0);
+    } 
+
+
+    #[rstest::rstest]
+    #[case(5.0, 2.5)]
+    #[case(100.0, 22.5)]
+    #[case(60.0, 40.0)]
+    fn deposit_to_resolution_to_dispute(
+         #[case] initial_deposit: f64,
+         #[case] dispute_amount: f64,
+    ){
+        let mut account_under_test = UserAccountDetails::new(&initial_deposit);
+        assert_eq!(account_under_test.available, initial_deposit);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+
+        let dispute_result = account_under_test.dispute_and_hold_funds(&dispute_amount);
+        assert!(dispute_result.is_ok());
+        assert_eq!(account_under_test.available, initial_deposit - dispute_amount);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0 + dispute_amount);
+
+        let resolve_result = account_under_test.resolve_dispute(&dispute_amount);
+        assert!(resolve_result.is_ok());
+        assert_eq!(account_under_test.available, initial_deposit);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+    }
+
+    #[rstest::rstest]
+    #[case(5.0, 2.5)]
+    #[case(100.0, 22.5)]
+    #[case(60.0, 40.0)]
+    fn deposit_to_resolution_to_chargeback(
+         #[case] initial_deposit: f64,
+         #[case] dispute_amount: f64,
+    ){
+        let mut account_under_test = UserAccountDetails::new(&initial_deposit);
+        assert_eq!(account_under_test.available, initial_deposit);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0);
+
+        let dispute_result = account_under_test.dispute_and_hold_funds(&dispute_amount);
+        assert!(dispute_result.is_ok());
+        assert_eq!(account_under_test.available, initial_deposit - dispute_amount);
+        assert_eq!(account_under_test.total, initial_deposit);
+        assert_eq!(account_under_test.locked, false);
+        assert_eq!(account_under_test.held, 0.0 + dispute_amount);
+
+        let resolve_result = account_under_test.perform_chargeback(&dispute_amount);
+        assert!(resolve_result.is_ok());
+        assert_eq!(account_under_test.available, initial_deposit - dispute_amount);
+        assert_eq!(account_under_test.total, initial_deposit - dispute_amount);
+        assert_eq!(account_under_test.locked, true);
+        assert_eq!(account_under_test.held, 0.0);
+
+        // Try to do something after locked - create bubble up here
+        let deposit_result = account_under_test.deposit_to_account(&initial_deposit);
+        assert!(deposit_result.is_err());
+        assert_eq!(deposit_result.unwrap_err().to_string(), "User account is locked");
+
     }
 }

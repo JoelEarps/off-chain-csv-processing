@@ -1,26 +1,55 @@
-# How I solve problems such as these
+# How I Solve Problems Such as These
 
-## Part 1: As simple as possible - represented by branch name `initial build`
+## Stage 1: As simple as possible — branch `initial-build`
 
-Simplest case
-Simplest code scenario - in our case no disputes
-Always a TDD approach
-Scenarios are written as BDD to make them easy and testable - allowing all areas of business to understand what the current capabilities of the system are
+- Define non-functional and functional requirements to clarify expected behaviors.
+- Start with the simplest working case (no disputes).
+- Apply a TDD approach from the beginning.
+- Define scenarios as BDD specifications (e.g., Gherkin) so that business stakeholders can easily understand and validate them.
+- Focus first on input/output correctness.
 
-For this particular case it was about loading data into a stream and then being able to deserialise tx's into an event driven architecture, matching events as they happening, in this case adding and subtracting from held funds for a particular client.
+For this case, the initial step was about:  
 
-Implementing display
+- Loading data into a stream.
+- Deserialising transactions into an event-driven architecture.
+- Matching events as they occur (e.g., deposits/withdrawals).
+- Updating held funds per client correctly.
 
-## Part 2: Tidy up code into maintainable format - represented by branch name `code maintainability and reorg`
+## Stage 2: Tidy up into a maintainable format — branch `stage-2/tidy-up`
 
-Code that follows solid principles
-Each folder represents a domain within the current system
-Types and any utils inherit the parent dir name
+- Refactor towards SOLID principles.  
+- Structure code so that each folder maps to a domain in the system.  
+- Ensure types and utils inherit the parent directory name, improving clarity.  
+- Apply separation of concerns so that each module has a clear responsibility and is easy to extend.  
+- Increase testability and enable dependency injection.  
+  - Example: the generic `BoxStream` abstraction can be injected for testing with TCP, file streams, or websockets.  
 
-## Part 3: Increase Complexity - represented by branch `state-machine`
+## Stage 3: Increase complexity — branch `stage-3/complex scenarios`
 
-This included handling
+- Introduce business complexity such as disputes and resolutions.  
+- Define new BDD scenarios covering these cases.  
+- Add test fixtures to simulate realistic flows.  
+- Continue a TDD-first cycle: write tests → implement minimal logic → refactor.  
 
-## Part 4: Submission and notes on further improvements
+## Testing Approach
 
-Demo of TCP stream example owr websocket into stream
+I aim for a holistic testing strategy that balances readability, stakeholder communication, and technical coverage.  
+
+### BDD Scenarios
+
+- Written in Gherkin format to keep tests human-readable.
+- Ensures product, engineering, and business teams share the same understanding.
+- Used to drive both acceptance tests and automated validation.
+
+### Unit Tests
+
+- Core logic is covered with unit tests.
+- Written with `rstest` and Rust’s built-in test framework.
+- Driven by the Gherkin specs to ensure scenarios map to low-level checks.
+- Always TDD: write the failing test, implement the minimum solution, then refactor.
+
+### Integration Tests
+
+- Validate that modules work together (e.g., parsing transactions through the full pipeline).
+- Include setup/teardown of streams and simulated environments (file, TCP, websocket).
+- Focus on correctness of end-to-end flows.
