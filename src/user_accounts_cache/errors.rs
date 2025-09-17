@@ -1,0 +1,1 @@
+pub(crate) type ErrorReportAnyhow = Vec<anyhow::Error>;
