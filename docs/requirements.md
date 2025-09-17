@@ -29,19 +29,103 @@ and assume this is an error on our partners side.
 
 1. Handling out of order txs.
 
-## How I would improve the current system and expand
+## How I Would Improve the Current System
 
-1. Use typestate to create a state machine to only allow transitions of the states for Dispute -> Resolve -> Chargeback.
-1a. could also use macro to remove much of the duplicated logic created by functions such as `dispute_and_hold_funds` and `resolve_dispute`
-2. The TCP server improvements - stream -> channel.
-3. Undefined scenarios - what about if no amount value present in the tx, withdrawn transaction cannot create account but we then receive a dispute.
-4. Use thiserror to create definite errors for the application, leading to a better and more specific error report
-Handling of errors
-Currently, due to a lack of logging, I do not log the errors as it would create an output different to one that is being 
-5. Getters and setters to provide better encapsulation.
-6. Use of BigDecimal to stop floating point errors and therefore keep precision to 4 decimal places, f64 allows us precision of up to, but use of floating point cna lead to errors.
-7. Add a logger to enable better debugging and configurable log level.
-8. Create config for type of stream being created and any secrets/ config data that may be required.
-9. Create two separate tasks running with a channel between them to handle asynchronous handling of stream reading and account cache updates.
-10. Handle disputes on withdraws, I am not sure if these were relevant as they don't quite make sense from a held funds perspective, as you cannot hold withdrawn funds, its more like you give the person credit however what about if the dispute is wrong? Doesn't make sense from the banks perspective.
-11. Handling failure to have comma at the end
+### Turn event type into enum and deserialise
+
+### Use the typestate pattern to create a state machine
+
+Enforce valid state transitions (e.g., `Dispute -> Resolve or Chargeback`) using typestate.  
+This leverages phantom data to ensure transitions are encoded at the type level, reducing the need for runtime checks in `match` statements.  
+
+### Macro to reduce duplication
+
+Introduce macros to eliminate repetitive logic in functions such as `dispute_and_hold_funds` and `resolve_dispute`.  
+This would improve readability, maintainability, and reduce the likelihood of subtle bugs from duplicated code.  
+
+### Undefined scenarios
+
+Consider how the system should handle edge cases, such as:  
+
+1. Missing `amount` values in transactions.
+2. Withdrawn transactions that cannot create accounts but are later disputed.
+These undefined flows need explicit handling to avoid inconsistent state.
+
+### Better error definition
+
+Adopt [`thiserror`](https://crates.io/crates/thiserror) for well-defined application error types.  
+This provides clearer error semantics and makes debugging and reporting more precise.  
+
+### Handling of errors
+
+Currently, errors are wrapped using `anyhow`, which simplifies error propagation but obscures specifics.  
+Improvements:  
+
+1. Use `thiserror` for domain errors and reserve `anyhow` for generic application entry points.  
+2. Introduce structured logging of errors without polluting the program output.  
+3. Provide actionable error messages for both developers and operators.  
+
+### Getters and setters
+
+Introduce getters and setters where appropriate to ensure better encapsulation of account state and prevent accidental misuse.  
+
+### Use of BigDecimal
+
+The system currently uses `f64`, which can represent the required precision (4 decimal places), but floating-point operations may lead to subtle rounding issues.  
+Adopt [BigDecimal](https://crates.io/crates/bigdecimal), an arbitrary-precision decimal type, to ensure accurate financial calculations.  
+
+### 12-Factor App improvements
+
+#### Logger
+
+Add structured, configurable logging to improve debugging and enable monitoring in production.  
+Support multiple log levels (debug, info, warn, error) with outputs tailored to different environments.  
+
+#### Configuration
+
+Introduce a configuration system (via environment variables, config files, or secrets management).  
+This enables flexibility for different deployment environments, testing setups, and security-sensitive data.  
+
+### Separate tasks with channel communication
+
+Split responsibilities into two asynchronous tasks:  
+
+1. One task for stream reading.
+2. One task for updating the account cache.  
+Coordinate via channels for improved scalability and cleaner concurrency handling.  
+
+#### Handle disputes on withdrawals
+
+Clarify the business logic for disputed withdrawals:
+
+1. From a “held funds” perspective, disputes on withdrawals don’t make sense (you cannot hold withdrawn funds).
+2. Could instead be treated as temporary credit, but this requires clear business rules.
+
+Close collaboration with product stakeholders is needed to define a consistent approach.  
+
+### More complex scenarios
+
+Explore additional improvements for robustness and performance:  
+
+1. **Batch processing & parallelisation**: Sort and group transactions by account/ID to process in parallel safely.  
+2. **Overflow handling**: Ensure the system prevents or gracefully handles numerical overflows in balances.  
+3. **Resilience to malformed input**: Validate input formats strictly, e.g., commas at the end of CSV rows.  
+
+### Additional improvements to consider
+
+#### Testing
+
+1. Property-based tests to validate state transitions.  
+2. Load tests to measure performance under heavy streams.
+3. Golden-file tests to lock down expected outputs.
+
+#### Observability
+
+1. Metrics collection (e.g., Prometheus integration).  
+2. Tracing for async flows (`tracing` crate).
+
+#### Documentation & onboarding
+
+1. Clearer docs for contributors.  
+2. Architectural overview diagrams.  
+3. Examples for typical transaction flows.
